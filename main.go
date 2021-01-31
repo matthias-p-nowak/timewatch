@@ -56,6 +56,8 @@ func main() {
 		listWork()
 	default:
 		beginProject(os.Args[1])
+		recalculate()
+		saveRecords()
 	}
 
 }
