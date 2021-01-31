@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/user"
 	"path"
@@ -17,10 +18,12 @@ var (
 	projectMap = make(map[string]*trecord)
 	records    []*trecord
 	rdFmts     = []string{"2006-01-02_15:04:05", "20O6:01:02:15:04:05"}
+	bills      []*bill
 )
 
 const (
 	fileName = "timewatch-hours.txt"
+	scale_up = 16.0 / 15.0
 )
 
 func init() {
@@ -33,7 +36,18 @@ type trecord struct {
 	worked    int
 	remaining int
 	billed    int
-	previous  *trecord
+	// not saved
+	previous *trecord
+	year     int
+	week     int
+	yearDay  int
+	weekDay  time.Weekday
+}
+
+type bill struct {
+	year   int
+	week   int
+	billed [7][]*trecord
 }
 
 func addRecord(tr *trecord) {
@@ -145,12 +159,52 @@ func listWork() {
 func recalculate() {
 	var previous *trecord
 	tf := "2006-01-02_15:04:05 MST"
+	// calculating the worked time in timely fashion
+	fmt.Println("calculating times")
 	for _, record := range records {
 		if previous != nil {
 			d := record.started.Sub(previous.started)
-			previous.worked = int(d.Seconds())
+			previous.worked = int(d.Seconds() * scale_up)
 			fmt.Printf("%s - %s = %f\n", record.started.Format(tf), previous.started.Format(tf), d.Seconds())
 		}
+		record.year, record.week = record.started.ISOWeek()
+		record.yearDay = record.started.YearDay()
+		record.weekDay = record.started.Weekday()
 		previous = record
+	}
+	// recalculate projects
+	fmt.Println("calculating projects")
+	for _, rec := range records {
+		if rec.previous != nil {
+			rec.remaining = rec.previous.remaining + rec.worked
+			if rec.previous.yearDay == rec.yearDay {
+				rec.remaining += 1800 * rec.previous.billed
+				rec.previous.billed = 0
+			}
+			if rec.remaining > 0 {
+				billing := int(math.Ceil(float64(rec.remaining) / 1800.0))
+				rec.billed = billing
+				rec.remaining -= billing * 1800
+			} else {
+				rec.billed = 0
+			}
+		}
+	}
+	fmt.Println("calculating weeks")
+	bills = nil
+	var lastBill *bill
+	for _, rec := range records {
+		if lastBill == nil || lastBill.week != rec.week || lastBill.year != rec.year {
+			lastBill = new(bill)
+			lastBill.year = rec.year
+			lastBill.week = rec.week
+			bills = append(bills, lastBill)
+		}
+		if rec.billed > 0 {
+			wd := (rec.weekDay + 6) % 7
+			lastBill.billed[wd] = append(lastBill.billed[wd], rec)
+		}
+		_ = rec
+
 	}
 }
