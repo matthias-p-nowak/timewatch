@@ -19,6 +19,7 @@ var (
 	records    []*trecord
 	rdFmts     = []string{"2006-01-02_15:04:05", "20O6:01:02:15:04:05"}
 	bills      []*bill
+	loc        *time.Location
 )
 
 const (
@@ -28,6 +29,11 @@ const (
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	var err error
+	loc, err = time.LoadLocation("Local")
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 type trecord struct {
@@ -35,9 +41,9 @@ type trecord struct {
 	project string
 	// already scaled
 	worked float64
-	// negative value, more work until next half hour can be billed
+	// aggregated: previous worked - previous billed*3600 + this.worked
 	remaining float64
-	// bille
+	// billed
 	billed float64
 	// not saved
 	previous *trecord
@@ -45,6 +51,41 @@ type trecord struct {
 	week     int
 	yearDay  int
 	weekDay  time.Weekday
+}
+
+func readRecord(parts []string, line int) (r *trecord) {
+	r = new(trecord)
+	timeStr := parts[0]
+	for _, f := range rdFmts {
+		timeVal, err := time.ParseInLocation(f, timeStr, loc)
+		if err == nil {
+			r.started = timeVal
+			break
+		}
+	}
+	r.project = parts[1]
+	if len(parts) >= 3 {
+		rem, err := strconv.ParseFloat(parts[2], 32)
+		r.remaining = rem
+		if err != nil {
+			fmt.Printf("remaining part (1rst integer) on line %d is wrong", line)
+			os.Exit(2)
+		}
+	}
+	if len(parts) >= 4 {
+		billed, err := strconv.ParseFloat(parts[3], 32)
+		if err != nil {
+			fmt.Printf("remaining part (2nd number) on line %d is wrong", line)
+			os.Exit(2)
+		}
+		r.billed = billed
+	}
+	return
+}
+
+func (r *trecord) save(wbf *bufio.Writer) {
+	t := r.started.Format(rdFmts[0])
+	wbf.WriteString(fmt.Sprintf("%s %s %.0F %.1F\n", t, r.project, r.remaining, r.billed))
 }
 
 type bill struct {
@@ -74,48 +115,19 @@ func readRecords() {
 	}
 	sc := bufio.NewScanner(f)
 	line := 0
-	loc, err := time.LoadLocation("Local")
-	if err != nil {
-		log.Fatal(err)
-	}
+	var prev *trecord
 	for sc.Scan() {
 		line += 1
 		parts := strings.Split(sc.Text(), " ")
 		if len(parts) < 2 {
 			continue
 		}
-		tr := new(trecord)
-		timeStr := parts[0]
-		for _, f := range rdFmts {
-			timeVal, err := time.ParseInLocation(f, timeStr, loc)
-			if err == nil {
-				tr.started = timeVal
-				break
-			}
+		rec := readRecord(parts, line)
+		if prev != nil && rec.project == prev.project {
+			continue
 		}
-		tr.project = parts[1]
-		if len(parts) >= 3 {
-			tr.worked, err = strconv.ParseFloat(parts[2], 32)
-			if err != nil {
-				fmt.Printf("worked part (1st integer) on line %d is wrong", line)
-				os.Exit(2)
-			}
-		}
-		if len(parts) >= 4 {
-			tr.remaining, err = strconv.ParseFloat(parts[3], 32)
-			if err != nil {
-				fmt.Printf("remaining part (2nd integer) on line %d is wrong", line)
-				os.Exit(2)
-				if err != nil {
-					fmt.Printf("billed part (3rd integer) on line %d is wrong", line)
-					os.Exit(2)
-				}
-			}
-		}
-		if len(parts) >= 5 {
-			tr.billed, err = strconv.ParseFloat(parts[4], 32)
-		}
-		addRecord(tr)
+		addRecord(rec)
+		prev = rec
 	}
 
 }
@@ -132,8 +144,7 @@ func saveRecords() {
 	}
 	wbf := bufio.NewWriter(wf)
 	for _, r := range records {
-		t := r.started.Format(rdFmts[0])
-		wbf.WriteString(fmt.Sprintf("%s %s %.0F %.0F %.1F\n", t, r.project, r.worked, r.remaining, r.billed))
+		r.save(wbf)
 	}
 	wbf.Flush()
 	wf.Close()
@@ -162,38 +173,44 @@ func listWork() {
 }
 
 func recalculate() {
-	var previous *trecord
-	tf := "2006-01-02_15:04:05 MST"
+	// tf := "2006-01-02_15:04:05 MST"
 	// calculating the worked time in timely fashion
 	fmt.Print("calculating times...")
-	for _, record := range records {
-		if previous != nil {
-			d := record.started.Sub(previous.started)
-			previous.worked = d.Seconds() * scale_up
-			fmt.Printf("%s - %s = %.1F\n", record.started.Format(tf), previous.started.Format(tf), d.Seconds())
-		}
-		record.year, record.week = record.started.ISOWeek()
-		record.yearDay = record.started.YearDay()
-		record.weekDay = record.started.Weekday()
-		previous = record
+	recs := len(records)
+	ended := time.Now()
+	for i := recs - 1; i >= 0; i-- {
+		rec := records[i]
+		d := ended.Sub(rec.started)
+		rec.worked = math.Ceil(d.Seconds() * scale_up)
+		rec.year, rec.week = rec.started.ISOWeek()
+		rec.yearDay = rec.started.YearDay()
+		rec.weekDay = rec.started.Weekday()
+		ended = rec.started
 	}
 	// recalculate projects
+	ended = time.Now()
 	fmt.Print("projects...")
 	for _, rec := range records {
 		if rec.previous != nil {
-			rec.remaining = rec.previous.remaining + rec.worked
-			if rec.previous.yearDay == rec.yearDay {
-				rec.remaining += 1800 * rec.previous.billed
-
-				rec.previous.billed = 0
+			// previous == previous of the same project
+			previous := rec.previous
+			if previous.yearDay == rec.yearDay {
+				previous.billed = 0
 			}
-			if rec.remaining > 0 {
-				billing := math.Ceil(rec.remaining / 1800.0)
-				rec.billed = billing
-				rec.remaining -= billing * 1800
-			} else {
-				rec.billed = 0
+			rec.remaining = previous.remaining - previous.billed*3600.0 + rec.worked
+		} else {
+			// no previous record
+			if ended.Sub(rec.started).Hours() < 168 {
+				// the last record
+				rec.remaining = rec.worked
 			}
+		}
+		// calculating billed
+		if rec.remaining > 0 {
+			billedHH := math.Ceil(rec.remaining / 1800.0)
+			rec.billed = billedHH / 2.0
+		} else {
+			rec.billed = 0
 		}
 	}
 	fmt.Println("weeks")
@@ -240,13 +257,16 @@ func showSummary() {
 		}
 	}
 
-	hours := regBilledHours / 2
+	hours := regBilledHours
 	toWork := float64(regWorkDays*8) - hours
-
-	sec2work := ((lastRec.billed+toWork)*3600.0 - lastRec.remaining) / scale_up
+	// is toWork - (lastRec.remaining - lastRec.billed*3600)
+	sec2work := (toWork+lastRec.billed)*3600.0 - lastRec.remaining
 	fmt.Printf(" registered work days: %12d\n", regWorkDays)
 	fmt.Printf("        worked so far: %12.1F\n", hours)
 	fmt.Printf("      work more hours: %12.1F\n", toWork)
-	fmt.Printf("      seconds to work: %12F\n", sec2work)
-
+	fmt.Printf("      seconds to work: %12.0F\n", sec2work)
+	now := time.Now()
+	workUntil := now.Add(time.Duration(sec2work/scale_up) * time.Second)
+	tf := "15:04:05"
+	fmt.Printf("           work until: %12s\n", workUntil.Format(tf))
 }
