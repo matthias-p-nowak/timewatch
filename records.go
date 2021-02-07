@@ -63,7 +63,11 @@ func readRecord(parts []string, line int) (r *trecord) {
 			break
 		}
 	}
-	r.project = parts[1]
+	if len(parts) < 2 {
+		r.project = ""
+	} else {
+		r.project = strings.Trim(parts[1], " \t")
+	}
 	if len(parts) >= 3 {
 		rem, err := strconv.ParseFloat(parts[2], 32)
 		r.remaining = rem
@@ -97,8 +101,10 @@ type bill struct {
 func addRecord(tr *trecord) {
 	lp := projectMap[tr.project]
 	tr.previous = lp
-	projectMap[tr.project] = tr
 	records = append(records, tr)
+	if tr.project != "" {
+		projectMap[tr.project] = tr
+	}
 }
 
 func readRecords() {
@@ -118,8 +124,12 @@ func readRecords() {
 	var prev *trecord
 	for sc.Scan() {
 		line += 1
-		parts := strings.Split(sc.Text(), " ")
-		if len(parts) < 2 {
+		txt := strings.Trim(sc.Text(), " \t")
+		if strings.HasPrefix(txt, "#") {
+			continue
+		}
+		parts := strings.Split(txt, " ")
+		if len(parts) < 1 {
 			continue
 		}
 		rec := readRecord(parts, line)
@@ -143,8 +153,13 @@ func saveRecords() {
 		log.Fatalf("writing to file failed: %s\n", err)
 	}
 	wbf := bufio.NewWriter(wf)
+	var prev *trecord
 	for _, r := range records {
+		if prev != nil && prev.week != r.week {
+			wbf.WriteString("\n")
+		}
 		r.save(wbf)
+		prev = r
 	}
 	wbf.Flush()
 	wf.Close()
@@ -156,20 +171,62 @@ func beginProject(prj string) {
 	tr.project = prj
 	tr.started = time.Now()
 	addRecord(tr)
-	tf := "2006-01-02_15:04:05"
-	fmt.Printf("started project: %10s at %s\n", prj, tr.started.Format(tf))
+	// tf := "2006-01-02_15:04:05"
+	fmt.Printf("      started project: %12s\n", prj)
 }
 
 func deleteCurrent() {
-	log.Fatal("todo")
+	tf := "2006-01-02_15:04:05"
+	recs := len(records)
+	if recs == 0 {
+		return
+	}
+	rec := records[recs-1]
+	if interactive {
+		fmt.Printf("Delete record project='%s' started at %s, \n  (yes/No) -->", rec.project, rec.started.Format(tf))
+		ch, _, _ := getKey()
+		fmt.Printf("%c\n", ch)
+		if ch == 'y' || ch == 'Y' {
+			records = records[:recs-1]
+			fmt.Println("record deleted")
+		}
+	} else {
+		records = records[:recs-1]
+	}
 }
 
 func endProject() {
-	log.Fatal("todo")
+	r := new(trecord)
+	r.project = ""
+	r.started = time.Now()
+	addRecord(r)
+	fmt.Println("empty record written")
 }
 
 func listWork() {
-	log.Fatal("todo")
+	tf := "2006-01-02"
+	cntBills := len(bills)
+	for i := cntBills - 1; i >= 0; i-- {
+		bill := bills[i]
+		fmt.Printf("Week %d/%02d\n", bill.year, bill.week)
+		for d := 0; d < 7; d++ {
+			wd := (d + 1) % 7
+			recs := bill.billed[wd]
+			if len(recs) > 0 {
+				rec := recs[0]
+				fmt.Printf("   %s %s\n", rec.weekDay.String(), rec.started.Format(tf))
+				for _, rec = range recs {
+					fmt.Printf("%15s: %5.1F\n", rec.project, rec.billed)
+				}
+			}
+		}
+		if interactive && i > 0 {
+			_, _, end := getKey()
+			if end {
+				return
+			}
+		}
+	}
 }
 
 func recalculate() {
@@ -191,6 +248,11 @@ func recalculate() {
 	ended = time.Now()
 	fmt.Print("projects...")
 	for _, rec := range records {
+		if len(rec.project) == 0 {
+			rec.billed = 0
+			rec.remaining = 0
+			continue
+		}
 		if rec.previous != nil {
 			// previous == previous of the same project
 			previous := rec.previous
