@@ -58,6 +58,7 @@ func main() {
 		beginProject(os.Args[1])
 		recalculate()
 		saveRecords()
+		showSummary()
 	}
 
 }
