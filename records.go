@@ -119,6 +119,7 @@ func readRecords() {
 		fmt.Printf("couldn't open %s\n", fn)
 		return
 	}
+	defer f.Close()
 	sc := bufio.NewScanner(f)
 	line := 0
 	var prev *trecord
@@ -163,7 +164,17 @@ func saveRecords() {
 	}
 	wbf.Flush()
 	wf.Close()
-	os.Rename(fn+".new", fn)
+	err=os.Rename(fn+".new", fn)
+	if err!=nil {
+		err=os.Remove(fn)
+		if err!=nil {
+			log.Fatal(err)
+		}
+		err=os.Rename(fn+".new", fn)
+		if err != nil {
+		log.Fatal(err)
+		}
+	}
 }
 
 func beginProject(prj string) {
