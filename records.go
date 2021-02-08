@@ -164,15 +164,16 @@ func saveRecords() {
 	}
 	wbf.Flush()
 	wf.Close()
-	err=os.Rename(fn+".new", fn)
-	if err!=nil {
-		err=os.Remove(fn)
-		if err!=nil {
+	err = os.Rename(fn+".new", fn)
+	if err != nil {
+		fmt.Println("trying the hard way by removing the old file")
+		err = os.Remove(fn)
+		if err != nil {
 			log.Fatal(err)
 		}
-		err=os.Rename(fn+".new", fn)
+		err = os.Rename(fn+".new", fn)
 		if err != nil {
-		log.Fatal(err)
+			log.Fatal(err)
 		}
 	}
 }
