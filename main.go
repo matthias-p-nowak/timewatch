@@ -11,23 +11,41 @@ import (
 )
 
 var (
-	interactive bool
+	// has a tty attached
+	hasKeyboard bool
+	// keyboard is Open
+	isInteractive bool
 )
+
+func OpenKeyboard() {
+	if isInteractive {
+		return
+	}
+	if !hasKeyboard {
+		log.Fatal("shouldn't open keyboard")
+	}
+	err := keyboard.Open()
+	if err != nil {
+		log.Fatal("couldn't open the keyboard for single key presses")
+	}
+	isInteractive = true
+}
+
+func closeKeyboard() {
+	if !isInteractive {
+		return
+	}
+	if !hasKeyboard {
+		log.Fatal("shouldn't close a non-existing keyboard")
+	}
+	err := keyboard.Close()
+	if err != nil {
+		log.Fatal("couldn't close the keyboard")
+	}
+}
 
 func printHelp() {
 	fmt.Println("github.com/matthias-p-nowak/timewatch (2021)")
-}
-
-func getKey() (char rune, key keyboard.Key, end bool) {
-	var err error
-	char, key, err = keyboard.GetKey()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if key == keyboard.KeyEsc || char == 'q' || char == 'Q' {
-		end = true
-	}
-	return
 }
 
 func getProject() {
@@ -69,9 +87,30 @@ func getProject() {
 }
 
 func printIntHelp() {
-	fmt.Print("\n\n     ----     \n" +
-		"following options:\n b - begin a project\n d - delete current project\n" +
-		" e - end current project\n l - list weekly bills\n n - new project\n s - print summary\n q - quit\n   -->")
+	fmt.Print("\n\n     ---- available options -----\n" +
+		"following options:\n" +
+		" b - begin a project\n" +
+		" d - delete current project\n" +
+		" e - end current project\n" +
+		" l - list weekly bills\n" +
+		" n - new project\n" +
+		" p - list projects\n" +
+		" s - print summary\n" +
+		" q - quit\n   -->")
+}
+
+func printProjects() {
+	i := 0
+	fmt.Println("--- list of projects ---")
+	for p, _ := range projectMap {
+		fmt.Printf("%15s ", p)
+		i++
+		if i%3 == 0 {
+			fmt.Println("")
+		}
+	}
+	fmt.Println("")
+
 }
 
 func interact() {
@@ -89,6 +128,8 @@ func interact() {
 		switch char {
 		case 'b':
 			getProject()
+			recalculate()
+			showSummary()
 		case 'd':
 			deleteCurrent()
 		case 'e':
@@ -97,19 +138,14 @@ func interact() {
 			recalculate()
 			listWork()
 		case 'p':
-			i := 0
-			fmt.Println("--- list of projects ---")
-			for p, _ := range projectMap {
-				fmt.Printf("%15s ", p)
-				i++
-				if i%3 == 0 {
-					fmt.Println("")
-				}
-			}
-			fmt.Println("")
+			printProjects()
 		case 's':
 			recalculate()
 			showSummary()
+		default:
+			fmt.Prinf("option not recognized")
+			printHelp()
+
 		}
 	}
 }
@@ -118,15 +154,14 @@ func main() {
 	fmt.Println("github.com/matthias-p-nowak/timewatch (2021)")
 	err := keyboard.Open()
 	if err != nil {
-
+		hasKeyboard = false
 	} else {
-		interactive = true
-		defer keyboard.Close()
+		hasKeyboard = true
+		keyboard.Close()
 	}
-	// defer fmt.Println("all done")
 	readRecords()
 	if len(os.Args) < 2 {
-		if interactive {
+		if hasKeyboard {
 			interact()
 			recalculate()
 			saveRecords()
@@ -158,6 +193,12 @@ func main() {
 	case strings.HasPrefix("list", cmd):
 		recalculate()
 		listWork()
+	case strings.HasPrefix("projects", cmd):
+		recalculate()
+		printProjects()
+	case strings.HasPrefix("summary", cmd):
+		recalculate()
+		showSummary()
 	default:
 		beginProject(os.Args[1])
 		recalculate()

@@ -194,7 +194,7 @@ func deleteCurrent() {
 		return
 	}
 	rec := records[recs-1]
-	if interactive {
+	if hasKeyboard {
 		fmt.Printf("Delete record project='%s' started at %s, \n  (yes/No) -->", rec.project, rec.started.Format(tf))
 		ch, _, _ := getKey()
 		fmt.Printf("%c\n", ch)
@@ -232,7 +232,7 @@ func listWork() {
 				}
 			}
 		}
-		if interactive && i > 0 {
+		if hasKeyboard && i > 0 {
 			_, _, end := getKey()
 			if end {
 				return
