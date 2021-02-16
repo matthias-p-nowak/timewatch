@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -17,41 +18,24 @@ var (
 	isInteractive bool
 )
 
-func OpenKeyboard() {
-	if isInteractive {
-		return
-	}
-	if !hasKeyboard {
-		log.Fatal("shouldn't open keyboard")
-	}
-	err := keyboard.Open()
-	if err != nil {
-		log.Fatal("couldn't open the keyboard for single key presses")
-	}
-	isInteractive = true
-}
-
-func closeKeyboard() {
-	if !isInteractive {
-		return
-	}
-	if !hasKeyboard {
-		log.Fatal("shouldn't close a non-existing keyboard")
-	}
-	err := keyboard.Close()
-	if err != nil {
-		log.Fatal("couldn't close the keyboard")
-	}
-}
-
 func printHelp() {
-	fmt.Println("github.com/matthias-p-nowak/timewatch (2021)")
+	fmt.Println("")
+	fmt.Println(" use timewatch [<cmd> [<project>] | [<project]]")
+	fmt.Println("   no command or project -> interactive mode")
+	fmt.Println("   b{egin} <name>        -> starts the project <name>")
+	fmt.Println("   d{elete}              -> deletes the current project")
+	fmt.Println("   e{nd}                 -> ends the current project")
+	fmt.Println("   h{elp}                -> prints this help")
+	fmt.Println("   l{ist}                -> list the work for days and weeks")
+	fmt.Println("   p{rojects}            -> list recorded projects")
+	fmt.Println("   s{summary}            -> shows the current summary")
+	fmt.Println("   <name>                -> starts the named project")
 }
 
 func getProject() {
 	str := ""
 	for true {
-		ch, key, err := keyboard.GetKey()
+		ch, key, err := keyboard.GetSingleKey()
 		if err != nil {
 			fmt.Println("couldn't get the key")
 			return
@@ -116,9 +100,11 @@ func printProjects() {
 func interact() {
 	printIntHelp()
 	for {
-		char, key, end := getKey()
-		fmt.Printf("%c\n", char)
-		if end {
+		char, key, err := keyboard.GetSingleKey()
+		if err != nil {
+			log.Fatal("can't get a single key")
+		}
+		if key == keyboard.KeyEsc || char == 'q' || char == 'Q' {
 			return
 		}
 		if key == keyboard.KeyEnter {
@@ -127,6 +113,7 @@ func interact() {
 		}
 		switch char {
 		case 'b':
+			printProjects()
 			getProject()
 			recalculate()
 			showSummary()
@@ -137,15 +124,24 @@ func interact() {
 		case 'l':
 			recalculate()
 			listWork()
+		case 'n':
+			printProjects()
+			fmt.Printf("enter your new project:")
+			scan := bufio.NewScanner(os.Stdin)
+			if scan.Scan() {
+				prj := scan.Text()
+				beginProject(prj)
+				recalculate()
+				showSummary()
+			}
 		case 'p':
 			printProjects()
 		case 's':
 			recalculate()
 			showSummary()
 		default:
-			fmt.Prinf("option not recognized")
+			fmt.Printf("option not recognized")
 			printHelp()
-
 		}
 	}
 }

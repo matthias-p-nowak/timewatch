@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/eiannone/keyboard"
 )
 
 var (
@@ -196,8 +198,7 @@ func deleteCurrent() {
 	rec := records[recs-1]
 	if hasKeyboard {
 		fmt.Printf("Delete record project='%s' started at %s, \n  (yes/No) -->", rec.project, rec.started.Format(tf))
-		ch, _, _ := getKey()
-		fmt.Printf("%c\n", ch)
+		ch, _, _ := keyboard.GetSingleKey()
 		if ch == 'y' || ch == 'Y' {
 			records = records[:recs-1]
 			fmt.Println("record deleted")
@@ -233,8 +234,11 @@ func listWork() {
 			}
 		}
 		if hasKeyboard && i > 0 {
-			_, _, end := getKey()
-			if end {
+			char, key, err := keyboard.GetSingleKey()
+			if err != nil {
+				log.Fatal("failed to get single key")
+			}
+			if key == keyboard.KeyEsc || char == 'q' || char == 'Q' {
 				return
 			}
 		}
@@ -322,8 +326,14 @@ func showSummary() {
 	lastBill := bills[len(bills)-1]
 	regWorkDays := 0
 	regBilledHours := 0.0
+	wdToday := -1
+	if len(lastRec.project) > 0 {
+		wdToday = int(lastRec.weekDay)
+	}
 	for i := 0; i < 7; i++ {
 		if len(lastBill.billed[i]) > 0 {
+			regWorkDays += 1
+		} else if i == wdToday {
 			regWorkDays += 1
 		}
 		for _, rec := range lastBill.billed[i] {
