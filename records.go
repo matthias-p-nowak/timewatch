@@ -239,16 +239,47 @@ func listWork() {
 				log.Fatal("failed to get single key")
 			}
 			if key == keyboard.KeyEsc || char == 'q' || char == 'Q' {
+				fmt.Println("back to previous menu")
 				return
 			}
 		}
 	}
 }
 
+func showWeek() {
+	l := len(bills)
+	if l < 1 {
+		return
+	}
+	lastBill := bills[l-1]
+	m := make(map[string][7]float64)
+	for _, d := range lastBill.billed {
+		for _, e := range d {
+			pl := m[e.project]
+			wd := int(e.weekDay)
+			wd = (wd + 6) % 7
+			pl[wd] = e.billed
+			m[e.project] = pl
+		}
+	}
+	fmt.Println("                Mon Tue Wed Thu Fri Sat Sun")
+	for name, val := range m {
+		fmt.Printf("%15s", name)
+		for _, d := range val {
+			if d > 0 {
+				fmt.Printf("%4.1f", d)
+			} else {
+				fmt.Print("    ")
+			}
+		}
+		fmt.Println("")
+	}
+}
+
 func recalculate() {
 	// tf := "2006-01-02_15:04:05 MST"
 	// calculating the worked time in timely fashion
-	fmt.Print("calculating times...")
+	fmt.Print("\ncalc times...\r")
 	recs := len(records)
 	ended := time.Now()
 	for i := recs - 1; i >= 0; i-- {
@@ -262,7 +293,7 @@ func recalculate() {
 	}
 	// recalculate projects
 	ended = time.Now()
-	fmt.Print("projects...")
+	fmt.Print("calc projects...\r")
 	for _, rec := range records {
 		if len(rec.project) == 0 {
 			rec.billed = 0
@@ -291,7 +322,7 @@ func recalculate() {
 			rec.billed = 0
 		}
 	}
-	fmt.Println("weeks")
+	fmt.Print("calc weeks...   \r")
 	bills = nil
 	var lastBill *bill
 	for _, rec := range records {
@@ -308,6 +339,7 @@ func recalculate() {
 		wd = int(rec.weekDay)
 		lastBill.billed[wd] = append(lastBill.billed[wd], rec)
 	}
+	fmt.Print("                          \r")
 }
 
 func showSummary() {
@@ -348,7 +380,7 @@ func showSummary() {
 	fmt.Printf(" registered work days: %12d\n", regWorkDays)
 	fmt.Printf("        worked so far: %12.1F\n", hours)
 	fmt.Printf("      work more hours: %12.1F\n", toWork)
-	fmt.Printf("      seconds to work: %12.0F\n", sec2work)
+	// fmt.Printf("      seconds to work: %12.0F\n", sec2work)
 	now := time.Now()
 	workUntil := now.Add(time.Duration(sec2work/scale_up) * time.Second)
 	tf := "15:04:05"
