@@ -80,7 +80,8 @@ func printIntHelp() {
 		" n - new project\n" +
 		" p - list projects\n" +
 		" s - print summary\n" +
-		" q - quit\n   -->")
+		" w - print week\n" +
+		" q - quit\n")
 }
 
 func printProjects() {
@@ -100,6 +101,7 @@ func printProjects() {
 func interact() {
 	printIntHelp()
 	for {
+		fmt.Printf("-->")
 		char, key, err := keyboard.GetSingleKey()
 		if err != nil {
 			log.Fatal("can't get a single key")
@@ -139,6 +141,9 @@ func interact() {
 		case 's':
 			recalculate()
 			showSummary()
+		case 'w':
+			recalculate()
+			showWeek()
 		default:
 			fmt.Printf("option not recognized")
 			printHelp()
@@ -195,6 +200,9 @@ func main() {
 	case strings.HasPrefix("summary", cmd):
 		recalculate()
 		showSummary()
+	case strings.HasPrefix("week", cmd):
+		recalculate()
+		showWeek()
 	default:
 		beginProject(os.Args[1])
 		recalculate()
