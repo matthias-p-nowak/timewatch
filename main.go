@@ -153,6 +153,7 @@ func interact() {
 
 func main() {
 	fmt.Println("github.com/matthias-p-nowak/timewatch (2021)")
+	defer fmt.Println("Have a nice day!")
 	err := keyboard.Open()
 	if err != nil {
 		hasKeyboard = false
