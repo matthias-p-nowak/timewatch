@@ -269,7 +269,7 @@ func showWeek() {
 			if d > 0 {
 				fmt.Printf("%5.1f", d)
 			} else {
-				fmt.Print("    ")
+				fmt.Print("     ")
 			}
 		}
 		fmt.Println("")
