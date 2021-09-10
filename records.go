@@ -11,6 +11,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/eiannone/keyboard"
@@ -22,6 +23,11 @@ var (
 	rdFmts     = []string{"2006-01-02_15:04:05", "20O6:01:02:15:04:05"}
 	bills      []*bill
 	loc        *time.Location
+	lock       = sync.RWMutex{}
+	savingWg   = sync.WaitGroup{}
+	doSave     = make(chan int, 5)
+	doQuit     = make(chan int, 1)
+	recTime    = time.Unix(0, 0)
 )
 
 const (
@@ -30,12 +36,13 @@ const (
 )
 
 func init() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	var err error
 	loc, err = time.LoadLocation("Local")
 	if err != nil {
 		log.Fatal(err)
 	}
+	readRecords()
+	go savingRecords()
 }
 
 type trecord struct {
@@ -110,7 +117,10 @@ func addRecord(tr *trecord) {
 }
 
 func readRecords() {
+	lock.Lock()
+	defer lock.Unlock()
 	projectMap = make(map[string]*trecord)
+	records = nil
 	user, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
@@ -122,17 +132,26 @@ func readRecords() {
 		return
 	}
 	defer f.Close()
+	fi, err := os.Lstat(fn)
+	if err == nil {
+		recTime = fi.ModTime()
+	}
 	sc := bufio.NewScanner(f)
 	line := 0
 	var prev *trecord
+	cntCom := 0
+	cntEmpty := 0
+	cntRecords := 0
 	for sc.Scan() {
 		line += 1
 		txt := strings.Trim(sc.Text(), " \t")
 		if strings.HasPrefix(txt, "#") {
+			cntCom++
 			continue
 		}
 		parts := strings.Split(txt, " ")
 		if len(parts) < 1 {
+			cntEmpty++
 			continue
 		}
 		rec := readRecord(parts, line)
@@ -140,12 +159,35 @@ func readRecords() {
 			continue
 		}
 		addRecord(rec)
+		cntRecords++
 		prev = rec
 	}
+	msgChan <- fmt.Sprintf("read %d lines, %d records, %d comments, %d empty ", line, cntRecords, cntCom, cntEmpty)
+}
 
+func hasChanged() bool {
+	user, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fn := path.Join(user.HomeDir, fileName)
+	fi, err := os.Lstat(fn)
+	if err == nil {
+		if fi.ModTime() != recTime {
+			// rt := recTime.Format(rdFmts[0])
+			// nt := fi.ModTime().Format(rdFmts[0])
+			// log.Printf("had %s, is now %s", rt, nt)
+			return true
+		} else {
+			return false
+		}
+	}
+	return false
 }
 
 func saveRecords() {
+	lock.Lock()
+	defer lock.Unlock()
 	user, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
@@ -157,11 +199,13 @@ func saveRecords() {
 	}
 	wbf := bufio.NewWriter(wf)
 	var prev *trecord
+	count := 0
 	for _, r := range records {
 		if prev != nil && prev.week != r.week {
 			wbf.WriteString("\n")
 		}
 		r.save(wbf)
+		count++
 		prev = r
 	}
 	wbf.Flush()
@@ -178,42 +222,62 @@ func saveRecords() {
 			log.Fatal(err)
 		}
 	}
+	fi, err := os.Lstat(fn)
+	if err == nil {
+		recTime = fi.ModTime()
+	}
+	msgChan <- fmt.Sprintf("%d records saved", count)
 }
 
 func beginProject(prj string) {
+	prj = strings.ReplaceAll(prj, " ", "_")
+	prj = strings.ReplaceAll(prj, "\t", "_")
+	if hasChanged() {
+		readRecords()
+	}
 	tr := new(trecord)
 	tr.project = prj
 	tr.started = time.Now()
 	addRecord(tr)
 	// tf := "2006-01-02_15:04:05"
 	fmt.Printf("      started project: %12s\n", prj)
+	doSave <- 1
 }
 
 func deleteCurrent() {
-	tf := "2006-01-02_15:04:05"
+	// tf := "2006-01-02_15:04:05"
+	if hasChanged() {
+		readRecords()
+	}
 	recs := len(records)
 	if recs == 0 {
 		return
 	}
 	rec := records[recs-1]
 	if hasKeyboard {
-		fmt.Printf("Delete record project='%s' started at %s, \n  (yes/No) -->", rec.project, rec.started.Format(tf))
+		fmt.Printf("Delete record project='%s' started at %s, \n  (yes/No) -->", rec.project, rec.started.Format(rdFmts[0]))
 		ch, _, _ := keyboard.GetSingleKey()
 		if ch == 'y' || ch == 'Y' {
 			records = records[:recs-1]
 			fmt.Println("record deleted")
+			doSave <- 2
 		}
 	} else {
 		records = records[:recs-1]
+		doSave <- 3
 	}
 }
 
 func endProject() {
+	if hasChanged() {
+		readRecords()
+	}
 	r := new(trecord)
 	r.project = ""
 	r.started = time.Now()
 	addRecord(r)
 	fmt.Println("empty record written")
+	doSave <- 4
 }
 
 func listWork() {
@@ -269,7 +333,7 @@ func showWeek() {
 			if d > 0 {
 				fmt.Printf("%5.1f", d)
 			} else {
-				fmt.Print("    ")
+				fmt.Print("     ")
 			}
 		}
 		fmt.Println("")
@@ -277,7 +341,9 @@ func showWeek() {
 }
 
 func recalculate() {
-	// tf := "2006-01-02_15:04:05 MST"
+	if hasChanged() {
+		readRecords()
+	}
 	// calculating the worked time in timely fashion
 	fmt.Print("\ncalc times...\r")
 	recs := len(records)
@@ -340,6 +406,7 @@ func recalculate() {
 		lastBill.billed[wd] = append(lastBill.billed[wd], rec)
 	}
 	fmt.Print("                          \r")
+	doSave <- 5
 }
 
 func showSummary() {
@@ -385,4 +452,38 @@ func showSummary() {
 	workUntil := now.Add(time.Duration(sec2work/scale_up) * time.Second)
 	tf := "15:04:05"
 	fmt.Printf("           work until: %12s\n", workUntil.Format(tf))
+	doSave <- 6
+}
+
+func savingRecords() {
+	savingWg.Add(1)
+	defer savingWg.Done()
+	tc := time.Tick(500 * time.Millisecond)
+	wp := 0
+	// log.Println("delayed saving started")
+	defer log.Println("delayed saving stopped")
+	for {
+		select {
+		case <-doQuit:
+			if wp > 0 {
+				saveRecords()
+			}
+			return
+		case <-doSave:
+			wp = 5
+		case <-tc:
+			wp -= 1
+			if wp == 0 {
+				// log.Println("delay expired")
+				saveRecords()
+			}
+		}
+	}
+}
+
+func finishRecords() {
+	log.Println("waiting for saving to finish")
+	defer log.Println("done with waiting")
+	doQuit <- 1
+	savingWg.Wait()
 }
