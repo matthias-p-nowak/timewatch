@@ -16,6 +16,7 @@ var (
 	hasKeyboard bool
 	// keyboard is Open
 	isInteractive bool
+	msgChan       = make(chan string, 256)
 )
 
 func printHelp() {
@@ -95,12 +96,14 @@ func printProjects() {
 		}
 	}
 	fmt.Println("")
-
 }
 
 func interact() {
 	printIntHelp()
 	for {
+		for len(msgChan) > 0 {
+			fmt.Println(<-msgChan)
+		}
 		fmt.Printf("-->")
 		char, key, err := keyboard.GetSingleKey()
 		if err != nil {
@@ -146,9 +149,13 @@ func interact() {
 			showWeek()
 		default:
 			fmt.Printf("option not recognized")
-			printHelp()
+			printIntHelp()
 		}
 	}
+}
+
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
 func main() {
@@ -160,12 +167,11 @@ func main() {
 		hasKeyboard = true
 		keyboard.Close()
 	}
-	readRecords()
+	// readRecords()
 	if len(os.Args) < 2 {
 		if hasKeyboard {
 			interact()
 			recalculate()
-			saveRecords()
 		} else {
 			printHelp()
 		}
@@ -182,11 +188,9 @@ func main() {
 	case strings.HasPrefix("delete", cmd):
 		deleteCurrent()
 		recalculate()
-		saveRecords()
 		showSummary()
 	case strings.HasPrefix("end", cmd):
 		endProject()
-		saveRecords()
 		recalculate()
 		showSummary()
 	case strings.HasPrefix("help", cmd):
@@ -206,8 +210,10 @@ func main() {
 	default:
 		beginProject(os.Args[1])
 		recalculate()
-		saveRecords()
 		showSummary()
 	}
-
+	finishRecords()
+	for len(msgChan) > 0 {
+		fmt.Println(<-msgChan)
+	}
 }
