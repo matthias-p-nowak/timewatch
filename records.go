@@ -326,14 +326,14 @@ func showWeek() {
 			m[e.project] = pl
 		}
 	}
-	fmt.Println("                Mon Tue Wed Thu Fri Sat Sun")
+	fmt.Println("                 Mon  Tue  Wed  Thu  Fri  Sat  Sun")
 	for name, val := range m {
 		fmt.Printf("%15s", name)
 		for _, d := range val {
 			if d > 0 {
-				fmt.Printf("%4.1f", d)
+				fmt.Printf("%5.1f", d)
 			} else {
-				fmt.Print("    ")
+				fmt.Print("     ")
 			}
 		}
 		fmt.Println("")
