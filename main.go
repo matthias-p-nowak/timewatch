@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/user"
+	"path"
 	"strings"
 
 	"github.com/eiannone/keyboard"
@@ -156,10 +158,21 @@ func interact() {
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	user, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fn := path.Join(user.HomeDir, "timewatch.log")
+	wf, err := os.OpenFile(fn, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.SetOutput(wf)
+	log.Println("init from main")
 }
 
 func main() {
-	fmt.Println("github.com/matthias-p-nowak/timewatch (2021)")
+	fmt.Printf("github.com/matthias-p-nowak/timewatch (2021)")
 	defer fmt.Println("Have a nice day!")
 	err := keyboard.Open()
 	if err != nil {

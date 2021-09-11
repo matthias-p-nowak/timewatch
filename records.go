@@ -36,6 +36,7 @@ const (
 )
 
 func init() {
+	log.Println("init from records")
 	var err error
 	loc, err = time.LoadLocation("Local")
 	if err != nil {
@@ -147,11 +148,13 @@ func readRecords() {
 		txt := strings.Trim(sc.Text(), " \t")
 		if strings.HasPrefix(txt, "#") {
 			cntCom++
+			log.Printf("ignoring comment line %s\n", txt)
 			continue
 		}
 		parts := strings.Split(txt, " ")
-		if len(parts) < 1 {
+		if len(txt) < 8 {
 			cntEmpty++
+			log.Printf("ignoring empty line %s\n", txt)
 			continue
 		}
 		rec := readRecord(parts, line)
@@ -174,9 +177,9 @@ func hasChanged() bool {
 	fi, err := os.Lstat(fn)
 	if err == nil {
 		if fi.ModTime() != recTime {
-			// rt := recTime.Format(rdFmts[0])
-			// nt := fi.ModTime().Format(rdFmts[0])
-			// log.Printf("had %s, is now %s", rt, nt)
+			rt := recTime.Format(rdFmts[0])
+			nt := fi.ModTime().Format(rdFmts[0])
+			log.Printf("had %s, is now %s", rt, nt)
 			return true
 		} else {
 			return false
