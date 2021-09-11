@@ -1,9 +1,8 @@
 module github.com/matthias-p-nowak/timewatch
 
-go 1.14
+go 1.16
 
 require (
 	github.com/eiannone/keyboard v0.0.0-20200508000154-caf4b762e807
-	github.com/go-delve/delve v1.6.0 // indirect
-	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
+	golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0 // indirect
 )
