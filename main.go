@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/eiannone/keyboard"
 )
@@ -189,45 +190,46 @@ func main() {
 		} else {
 			printHelp()
 		}
-		return
-	}
-	cmd := strings.ToLower(os.Args[1])
-	switch {
-	case strings.HasPrefix("begin", cmd):
-		if len(os.Args) < 3 {
+	} else {
+		cmd := strings.ToLower(os.Args[1])
+		switch {
+		case strings.HasPrefix("begin", cmd):
+			if len(os.Args) < 3 {
+				printHelp()
+				return
+			}
+			beginProject(os.Args[2])
+		case strings.HasPrefix("delete", cmd):
+			deleteCurrent()
+			recalculate()
+			showSummary()
+		case strings.HasPrefix("end", cmd):
+			endProject()
+			recalculate()
+			showSummary()
+		case strings.HasPrefix("help", cmd):
 			printHelp()
-			return
+		case strings.HasPrefix("list", cmd):
+			recalculate()
+			listWork()
+		case strings.HasPrefix("projects", cmd):
+			recalculate()
+			printProjects()
+		case strings.HasPrefix("summary", cmd):
+			recalculate()
+			showSummary()
+		case strings.HasPrefix("week", cmd):
+			recalculate()
+			showWeek()
+		default:
+			beginProject(os.Args[1])
+			recalculate()
+			showSummary()
 		}
-		beginProject(os.Args[2])
-	case strings.HasPrefix("delete", cmd):
-		deleteCurrent()
-		recalculate()
-		showSummary()
-	case strings.HasPrefix("end", cmd):
-		endProject()
-		recalculate()
-		showSummary()
-	case strings.HasPrefix("help", cmd):
-		printHelp()
-	case strings.HasPrefix("list", cmd):
-		recalculate()
-		listWork()
-	case strings.HasPrefix("projects", cmd):
-		recalculate()
-		printProjects()
-	case strings.HasPrefix("summary", cmd):
-		recalculate()
-		showSummary()
-	case strings.HasPrefix("week", cmd):
-		recalculate()
-		showWeek()
-	default:
-		beginProject(os.Args[1])
-		recalculate()
-		showSummary()
 	}
 	finishRecords()
 	for len(msgChan) > 0 {
 		fmt.Println(<-msgChan)
 	}
+	time.Sleep(1 * time.Second)
 }
